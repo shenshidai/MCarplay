@@ -1,0 +1,66 @@
+name: Build iOS IPA (No Mac Required)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build Unsigned MCarplay IPA
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project Spec
+        run: |
+          cat << 'EOF' > project.yml
+          name: MCarplay
+          options:
+            bundleIdPrefix: com.mondeo.carplay
+          targets:
+            MCarplay:
+              type: application
+              platform: iOS
+              deploymentTarget: "16.0"
+              sources: [Sources]
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.mondeo.mcarplay.app
+                  INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+                  INFOPLIST_KEY_UILaunchScreen_Generation: true
+                  INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+                  INFOPLIST_KEY_UIBackgroundModes: "audio location fetch"
+                  INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "用于在CarPlay车载桌面显示实时导航地图"
+                  INFOPLIST_KEY_NSLocalNetworkUsageDescription: "用于通过WiFi热点连接23款蒙迪欧车机亿连系统"
+                  INFOPLIST_KEY_NSAppleMusicUsageDescription: "用于在CarPlay桌面同步显示与控制正在播放的音乐"
+          EOF
+          xcodegen generate
+
+      - name: Build Unsigned App Archive
+        run: |
+          xcodebuild -project MCarplay.xcodeproj \
+            -scheme MCarplay \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CONFIGURATION_BUILD_DIR=build
+
+      - name: Package into IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/MCarplay.app Payload/
+          zip -r MCarplay-Unsigned.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCarplay-Unsigned
+          path: MCarplay-Unsigned.ipa
